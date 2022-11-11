@@ -292,6 +292,259 @@ test_tbl %>%
     )
 
 
+# ******************************************************************************
+# HYPER PARAMETER TUNING ----
+# ******************************************************************************
+
+# * K FOLD Resamples ----
+set.seed(123)
+resamples_kfold <- train_cleaned_tbl %>% vfold_cv(v = 5)
+
+resamples_kfold %>%
+    tk_time_series_cv_plan() %>% 
+    plot_time_series_cv_plan(date, num_sold, .facet_ncol = 2)
+
+
+# * Parallel Processing ----
+registerDoFuture()
+n_cores <- 4
+plan(strategy = cluster, workers = makeCluster(n_cores))
+
+
+# * Earth Tune ----
+
+# ** Spec ----
+model_spec_earth_tuned <- mars(
+    mode        = "regression",
+    num_terms   = tune(),
+    prod_degree =  tune()
+) %>% 
+    set_engine("earth")
+
+# ** Workflow ----
+wflw_spec_earth_tune <- workflow() %>% 
+    add_model(model_spec_earth_tuned) %>% 
+    add_recipe(recipe_spec %>% step_rm(date))
+
+# ** Tuning ----
+tic()
+set.seed(123)
+tune_results_earth <- wflw_spec_earth_tune %>% 
+    tune_grid(
+        resamples = resamples_kfold,
+        grid      = 10,
+        control   = control_grid(verbose = TRUE, allow_par = TRUE)
+    )
+toc()
+
+# ** Results ----
+tune_results_earth %>% show_best("rmse", n = 5)
+
+# ** Finalize ----
+wflw_fit_earth_tuned <- wflw_spec_earth_tune %>% 
+    finalize_workflow(select_best(tune_results_earth, "rmse")) %>% 
+    fit(train_cleaned_tbl)
+
+
+# * Xgboost Tune ----
+
+# ** Spec ----
+model_spec_xgboost_tune <- boost_tree(
+    mode           = "regression",
+    mtry           = tune(),
+    trees          = tune(),
+    min_n          = tune(),
+    tree_depth     = tune(),
+    learn_rate     = tune(),
+    loss_reduction = tune()
+) %>% 
+    set_engine("xgboost")
+
+# ** Workflow ----
+wflw_spec_xgboost_tune <- workflow() %>% 
+    add_model(model_spec_xgboost_tune) %>% 
+    add_recipe(recipe_spec %>% step_rm(date))
+
+# ** Tuning ----
+tic()
+set.seed(123)
+tune_results_xgboost <- wflw_spec_xgboost_tune %>% 
+    tune_grid(
+        resamples  = resamples_kfold,
+        # param_info = parameters(wflw_spec_xgboost_tune) %>% 
+        #   update(learn_rate = learn_rate(c(0.001, 0.400), trans = NULL)),
+        grid       = 10,
+        control    = control_grid(verbose = TRUE, allow_par = TRUE)
+        
+    )
+toc()
+
+# ** Results ----
+tune_results_xgboost %>% show_best("rmse", n = 5)
+
+# ** Finalize ----
+wflw_fit_xgboost_tuned <- wflw_spec_xgboost_tune %>% 
+    finalize_workflow(select_best(tune_results_xgboost, "rmse")) %>% 
+    fit(train_cleaned_tbl)
+
+
+# * Ranger Tune ----
+
+# ** Spec ----
+model_spec_ranger_tune <- rand_forest(
+    mode           = "regression",
+    mtry           = tune(),
+    trees          = tune(),
+    min_n          = tune()
+) %>% 
+    set_engine("ranger")
+
+# ** Workflow ----
+wflw_spec_ranger_tune <- workflow() %>% 
+    add_model(model_spec_ranger_tune) %>% 
+    add_recipe(recipe_spec %>% step_rm(date))
+
+# ** Tuning ----
+tic()
+set.seed(123)
+tune_results_ranger <- wflw_spec_ranger_tune %>% 
+    tune_grid(
+        resamples  = resamples_kfold,
+        grid       = 10,
+        control    = control_grid(verbose = TRUE, allow_par = TRUE)
+        
+    )
+toc()
+
+# ** Results ----
+tune_results_ranger %>% show_best("rmse", n = 5)
+
+# ** Finalize ----
+wflw_fit_ranger_tuned <- wflw_spec_ranger_tune %>% 
+    finalize_workflow(select_best(tune_results_ranger, "rmse")) %>% 
+    fit(train_cleaned_tbl)
+
+
+# ******************************************************************************
+# ACCURACY CHECK (TUNED MODELS) ----
+# ******************************************************************************
+
+# * Modeltime Table ----
+modeltime_table_tuned_tbl <- modeltime_table(
+    wflw_fit_earth_tuned, 
+    wflw_fit_xgboost_tuned, 
+    wflw_fit_ranger_tuned
+) %>% 
+    mutate(.model_desc = paste0(.model_desc, "_Tuned"))
+
+# * Calibrate ----
+calibration_tuned_tbl <- modeltime_table_tuned_tbl %>% 
+    modeltime_calibrate(test_tbl)
+
+# * Accuracy ----
+accuracy_tuned_tbl <- calibration_tuned_tbl %>% 
+    modeltime_accuracy(test_tbl) %>% 
+    arrange(rmse)
+
+# * Visualize Test Forecast ----
+test_forecast_tuned_tbl <- calibration_tuned_tbl %>% 
+    modeltime_forecast(
+        new_data    = test_tbl,
+        actual_data = data_prepared_tbl,
+        keep_data   = TRUE
+    ) 
+
+
+# ** Test Forecast by Country ----
+test_forecast_tuned_tbl %>% 
+    filter(hierachy == "country") %>% 
+    filter(identifier %in% c("Belgium", "France", "Germany", "Italy", "Poland", "Spain")) %>% 
+    group_by(identifier) %>% 
+    filter(date >= as.Date("2020-06-01")) %>% 
+    plot_modeltime_forecast(
+        .facet_ncol          = 2,
+        .conf_interval_alpha = 0.1,
+        .interactive         = TRUE
+    )
+
+# ** Test Forecast by Product ----
+test_forecast_tuned_tbl %>% 
+    filter(hierachy == "product") %>% 
+    filter(identifier %in% c("Kaggle Advanced Techniques", "Kaggle for Kids: One Smart Goose",
+                             "Kaggle Getting Started", "Kaggle Recipe Book")) %>% 
+    group_by(identifier) %>% 
+    filter(date >= as.Date("2020-06-01")) %>% 
+    plot_modeltime_forecast(
+        .facet_ncol          = 2,
+        .conf_interval_alpha = 0.1,
+        .interactive         = TRUE
+    )
+
+# ** Test Forecast by Store ----
+test_forecast_tuned_tbl %>% 
+    filter(hierachy == "store") %>% 
+    filter(identifier %in% c("KaggleMart", "KaggleRama")) %>% 
+    group_by(identifier) %>% 
+    filter(date >= as.Date("2020-06-01")) %>% 
+    plot_modeltime_forecast(
+        .facet_ncol          = 1,
+        .conf_interval_alpha = 0.1,
+        .interactive         = TRUE
+    )
+
+# ** Test Accuracy by Hierarchy
+# test_forecast_tuned_tbl %>% 
+#   filter(hierachy == "store") %>% 
+#   filter(identifier %in% c("KaggleMart", "KaggleRama")) %>% 
+#   select(identifier, .model_desc, .index, .value) %>% 
+#   pivot_wider(names_from = .model_desc, values_from = .value) %>% 
+#   filter(!is.na(EARTH_Tuned)) %>% 
+#   pivot_longer(cols = EARTH_Tuned:RANGER_Tuned) %>% 
+#   group_by(identifier, name) %>% 
+#   summarize_accuracy_metrics(
+#     truth      = ACTUAL,
+#     estimate   = value,
+#     metric_set = default_forecast_accuracy_metric_set() 
+#   )
+
+# ******************************************************************************
+# REFIT MODELS TO FULL DATA ----
+# ******************************************************************************
+
+# * Ranger Full Data Fit ----
+wflw_fit_ranger_tuned <- wflw_spec_ranger_tune %>% 
+    finalize_workflow(select_best(tune_results_ranger, "rmse")) %>% 
+    fit(bind_rows(train_tbl, test_tbl))
+
+# * Xgboost Full Data Fit ----
+wflw_fit_xgboost_tuned <- wflw_spec_ranger_tune %>% 
+    finalize_workflow(select_best(tune_results_xgboost, "rmse")) %>% 
+    fit(bind_rows(train_tbl, test_tbl))
+
+# ******************************************************************************
+# SAVE ARTIFACTS ----
+# ******************************************************************************
+artifacts_list <- list(
+    # Data
+    data = list(
+        data_prepared_tbl = data_prepared_tbl,
+        future_data_tbl   = future_data_tbl,
+        train_tbl         = train_tbl,
+        test_tbl          = test_tbl
+    ),
+    
+    # Recipes
+    recipe = list(recipe = recipe_spec),
+    
+    # Tuned Models
+    models = list(
+        wflw_fit_ranger_tuned,
+        wflw_fit_xgboost_tuned
+    )
+)
+
+artifacts_list %>% write_rds("../Artifacts//artifacts_list.rds")
+
 
 
 
