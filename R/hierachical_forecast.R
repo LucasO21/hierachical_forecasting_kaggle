@@ -494,7 +494,7 @@ test_forecast_tuned_tbl %>%
 
 # ** Test Accuracy by Hierarchy
 # test_forecast_tuned_tbl %>% 
-#   filter(hierachy == "store") %>% 
+#   filter(hierarchy == "store") %>% 
 #   filter(identifier %in% c("KaggleMart", "KaggleRama")) %>% 
 #   select(identifier, .model_desc, .index, .value) %>% 
 #   pivot_wider(names_from = .model_desc, values_from = .value) %>% 
@@ -547,9 +547,59 @@ artifacts_list %>% write_rds("../Artifacts//artifacts_list.rds")
 
 
 
+df_test <- train_raw_tbl %>%
+    group_by(country) %>%
+    summarise(total_num_sold = sum(num_sold)) %>%
+    ungroup() %>%
+    arrange(desc(total_num_sold)) %>% 
+    mutate(code = case_when(
+        country == "Belgium" ~ "BEL",
+        country == "Germany" ~ "DEU",
+        country == "Italy" ~ "ITA",
+        country == "Poland" ~ "POL",
+        country == "Spain" ~ "ESP",
+        country == "France" ~ "FRA"
+    ))
+    
 
+df_test %>% 
+    plotly::plot_geo(locations = df_test$code) %>% 
+    plotly::add_trace(
+        z         = ~total_num_sold, 
+        locations = ~ code, 
+        color     = ~total_num_sold
+    )
 
+plotly::plot_ly(df_test,
+                type = "choropleth",
+                locations = df_test$code,
+                z=df_test$total_num_sold,
+                text = df_test$country,
+                colorscale = "Blues")
 
+df <- read.csv('https://raw.githubusercontent.com/plotly/datasets/master/2014_world_gdp_with_codes.csv') %>% 
+    as_tibble()
+df %>% 
+    filter(COUNTRY %in% c("Belgium", "Germany", "France", "Italy", "Spain", "Poland"))
 
+# Libraries
+library(tidyverse)
+library(plotly)
+
+# Data
+countries <- c("Germany", "Belgium", "Framce", "Italy", "Spain", "Poland")
+codes     <- c("DEU", "BEL", "FRA", "ITA", "ESP", "POL")
+values    <- c(100, 200, 300, 400, 500, 600)
+
+df <- tibble(countries, codes, values)
+
+# Maps
+plot_geo(locations = df$codes) %>% 
+    add_trace(
+        z = ~values,
+        locations = ~codes,
+        color = ~values
+    )
+    
 
 
