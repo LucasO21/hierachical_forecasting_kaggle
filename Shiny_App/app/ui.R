@@ -89,6 +89,7 @@ dashboardPage(
         )
     ),
     dashboardBody(
+        useShinyjs(),
         fluidRow(
             
             # Value Box 1
