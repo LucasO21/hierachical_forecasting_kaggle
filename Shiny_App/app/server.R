@@ -11,6 +11,7 @@ library(tidyverse)
 library(janitor)
 library(shiny)
 library(shinyjs)
+library(plotly)
 source("../Functions/app_functions.R")
 
 # Data
@@ -83,6 +84,30 @@ shinyServer(function(input, output) {
             color = "green"
         )
     })
+    
+    # Sales Map
+    output$sales_map <- renderPlotly({
+        get_sales_map_plot(
+            data = dataset_filtered_tbl()
+        )
+    })
+    
+    # Sales Trend
+    output$sales_trend <- renderPlotly({
+        get_trend_plot_data(
+            data          = dataset_filtered_tbl(),
+            by            = input$time_unit,
+            lookback_days = input$lookback
+        ) %>% 
+            get_trend_plot()
+    })
+    
+    observeEvent(input$map_info, {
+        shinyalert::shinyalert(title = "What is shown here?",
+                               text = "Map showing number of products and sales by country",
+                               type = "info", size = "xs")
+    })
+    
     
     # Apply / Reset Reactive Filters
     observeEvent(eventExpr = input$reset, handlerExpr = {

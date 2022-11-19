@@ -15,6 +15,9 @@ library(janitor)
 library(lubridate)
 library(timetk)
 library(plotly)
+library(sp)
+library(raster)
+library(leaflet)
 
 
 # * Load Data ----
@@ -81,7 +84,7 @@ get_value_box <- function(data){
 # Country Map of Sales ----
 get_sales_map_plot <- function(data){
     
-    sales_by_country_tbl <- products_tbl %>% 
+    sales_by_country_tbl <- data %>% 
         group_by(country) %>% 
         summarise(
             total_sold = sum(num_sold),
@@ -116,10 +119,14 @@ get_sales_map_plot <- function(data){
             colors    = "Blues",
             text      = ~tool_tip_label
         ) %>% 
-        layout(geo = list(
-            lonaxis = list(range = c(-15, 23)),
-            lataxis = list(range = c(35, 60))
-        ))
+        layout(
+            geo = list(
+                lonaxis = list(range = c(-15, 23)),
+                lataxis = list(range = c(35, 60)),
+                showlakes = TRUE,
+                lakecolor = toRGB("white")
+            )
+        )
     
     return(p)
     
@@ -128,22 +135,99 @@ get_sales_map_plot <- function(data){
 products_tbl %>% get_sales_map_plot()
 
 
+period   <- "day"
+lookback <- 365/2
+
+data <- products_tbl
+by   <- "day"
+
+get_trend_plot_data <- function(data, by, lookback_days = 500){
     
+    # Look Back Setup
+    # if(by == "day") lookback_days  <- lookback_days
+    # if(by == "week") lookback_days <- lookback_days/7
+    
+    if(by == "day" & lookback_days > 90) lookback_days = 90
+    if(by == "week" & lookback_days > 360) lookback_days = 360/7
+    
+    data_prep <- data %>% 
+        summarise_by_time(date, by, num_sold = sum(num_sold)) %>% 
+        bind_cols(
+            data %>% 
+                summarise_by_time(date, by, sales = sum(sales)) %>% 
+                select(sales)
+        ) %>% 
+        tail(lookback_days) %>% 
+        mutate(label_text = str_glue("
+                            Products Sold: {num_sold %>% scales::comma(accuracy = 1)}
+                            Sales: {sales %>% scales::dollar(accuracy = 1)}
+                            
+                            "))
+    
+    return(data_prep)
+    
+}
+
+get_trend_plot_data(products_tbl, "week", lookback_days = 500)
+
+
+get_trend_plot <- function(data){
+    
+    p <-  data %>% 
+        ggplot(aes(date, sales))+
+        geom_line(size = 0.5)+
+        geom_point(aes(text = label_text), size = 0.8)+
+        expand_limits(y = 0)+
+        geom_smooth(method = "loess", span = 0.15)+
+        scale_y_continuous(labels = scales::dollar_format())+
+        scale_x_date(date_breaks = "months", date_labels = "%b-%y")+
+        theme_minimal()+
+        theme(axis.text = element_text(size = 10))+
+        labs(y = NULL, x = NULL)
+    
+    p <- ggplotly(p, tooltip = "text")
+    
+    return(p)
+    
+}
+
+get_trend_plot_data(products_tbl, "week", lookback_days = 360) %>% 
+    get_trend_plot()
 
 
 
-# Data
-countries <- c("Germany", "Belgium", "Framce", "Italy", "Spain", "Poland")
-codes     <- c("DEU", "BEL", "FRA", "ITA", "ESP", "POL")
-values    <- c(100, 200, 300, 400, 500, 600)
 
-df <- tibble(countries, codes, values)
+sales_by_country_tbl
 
-# Maps
-plot_geo(locations = df$codes) %>% 
-    add_trace(
-        z = ~values,
-        locations = ~codes,
-        color = ~values
-    )
+eu_iso <- c(BEL = "BEL", FRA = "FRA", DEU = "DEU", ITA = "ITA", POL = "POL", ESP = "ESP")
+
+eu <- list()
+
+for(country_code in eu_iso){
+    eu[[country_code]] <- getData("GADM", country = eu_iso[country_code], level = 1)
+}
+
+EU <- rbind(eu$BEL, eu$FRA, eu$DEU, eu$ITA, eu$POL, eu$ESP, makeUniqueIDs = TRUE)
+
+col_pal <- colorQuantile(palette = "BuPu", domain = sales_by_country_tbl$total_sales)
+
+leaflet() %>% 
+    addTiles() %>% 
+    addPolygons(data = EU, 
+                stroke = FALSE,
+                fillColor = ~col_pal(sales_by_country_tbl$total_sales),
+                popup = paste("Text", sales_by_country_tbl$total_sales_text, "<br>"),
+                fillOpacity = 0.9,
+                color = "white",
+                weight = 0.3) %>% 
+    addLegend(position = "bottomleft", pal = col_pal,
+              values = sales_by_country_tbl$total_sales, title = "Total Sales")
+
+col_pal <- colorNumeric(
+    palette = "Blues",
+    domain = sales_by_country_tbl$total_sales
+)
+
+
+?getData
 
