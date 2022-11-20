@@ -21,12 +21,12 @@ library(timetk)
 
 # ** Modeling ----
 library(xgboost)
-library(treesnip)
+# library(treesnip)
 library(lightgbm)
 library(tidymodels)
 library(modeltime)
 library(modeltime.resample)
-library(rules)
+# library(rules)
 
 # ** Parallel Processing ----
 library(tictoc)
@@ -42,7 +42,7 @@ library(parallel)
 train_raw_tbl <- vroom::vroom("../Data/train.csv") %>% 
     clean_names() %>% 
     as_tibble() %>% 
-    filter(date >= as.Date("2018-01-01"))
+    filter(date >= as.Date("2019-01-01"))
     
 
 train_raw_tbl %>% glimpse()
@@ -226,7 +226,6 @@ train_cleaned_tbl %>%
     plot_anomaly_diagnostics(date, num_sold)
 
 
-
 # ******************************************************************************
 # RECIPE ----
 # ******************************************************************************
@@ -256,41 +255,18 @@ wflw_fit_ranger <- workflow() %>%
     add_recipe(recipe_spec %>% step_rm(date)) %>% 
     fit(train_cleaned_tbl)
 
-# * MARS ----
-wflw_fit_mars <- workflow() %>% 
-    add_model(mars() %>% set_mode("regression") %>% set_engine("earth")) %>% 
-    add_recipe(recipe_spec %>% step_rm(date)) %>% 
-    fit(train_cleaned_tbl)
-
-# * Cubist Model ----
-wflw_fit_cubsist <- workflow() %>% 
-    add_model(cubist_rules("regression") %>% set_engine("Cubist")) %>% 
-    add_recipe(recipe_spec %>% step_rm(date)) %>% 
-    fit(train_cleaned_tbl)
-
-
 # ******************************************************************************
 # MODELTIME TABLE ----
 # ******************************************************************************
 modeltime_table_fit <- modeltime_table(
     wflw_fit_xgboost,
-    wflw_fit_ranger,
-    wflw_fit_mars,
-    wflw_fit_cubsist
+    wflw_fit_ranger
 )
 
 calibration_fit_tbl <- modeltime_table_fit %>% 
     modeltime_calibrate(test_tbl) %>% 
     modeltime_accuracy() %>% 
     arrange((rmse))
-
-test_tbl %>% 
-    summarise(
-        mean   = mean(num_sold),
-        median = median(num_sold),
-        sd     = sd(num_sold)
-    )
-
 
 # ******************************************************************************
 # HYPER PARAMETER TUNING ----
@@ -309,42 +285,6 @@ resamples_kfold %>%
 registerDoFuture()
 n_cores <- 4
 plan(strategy = cluster, workers = makeCluster(n_cores))
-
-
-# * Earth Tune ----
-
-# ** Spec ----
-model_spec_earth_tuned <- mars(
-    mode        = "regression",
-    num_terms   = tune(),
-    prod_degree =  tune()
-) %>% 
-    set_engine("earth")
-
-# ** Workflow ----
-wflw_spec_earth_tune <- workflow() %>% 
-    add_model(model_spec_earth_tuned) %>% 
-    add_recipe(recipe_spec %>% step_rm(date))
-
-# ** Tuning ----
-tic()
-set.seed(123)
-tune_results_earth <- wflw_spec_earth_tune %>% 
-    tune_grid(
-        resamples = resamples_kfold,
-        grid      = 10,
-        control   = control_grid(verbose = TRUE, allow_par = TRUE)
-    )
-toc()
-
-# ** Results ----
-tune_results_earth %>% show_best("rmse", n = 5)
-
-# ** Finalize ----
-wflw_fit_earth_tuned <- wflw_spec_earth_tune %>% 
-    finalize_workflow(select_best(tune_results_earth, "rmse")) %>% 
-    fit(train_cleaned_tbl)
-
 
 # * Xgboost Tune ----
 
@@ -431,7 +371,6 @@ wflw_fit_ranger_tuned <- wflw_spec_ranger_tune %>%
 
 # * Modeltime Table ----
 modeltime_table_tuned_tbl <- modeltime_table(
-    wflw_fit_earth_tuned, 
     wflw_fit_xgboost_tuned, 
     wflw_fit_ranger_tuned
 ) %>% 
@@ -493,44 +432,59 @@ test_forecast_tuned_tbl %>%
     )
 
 # ** Test Accuracy by Hierarchy
-# test_forecast_tuned_tbl %>% 
-#   filter(hierarchy == "store") %>% 
-#   filter(identifier %in% c("KaggleMart", "KaggleRama")) %>% 
-#   select(identifier, .model_desc, .index, .value) %>% 
-#   pivot_wider(names_from = .model_desc, values_from = .value) %>% 
-#   filter(!is.na(EARTH_Tuned)) %>% 
-#   pivot_longer(cols = EARTH_Tuned:RANGER_Tuned) %>% 
-#   group_by(identifier, name) %>% 
-#   summarize_accuracy_metrics(
-#     truth      = ACTUAL,
-#     estimate   = value,
-#     metric_set = default_forecast_accuracy_metric_set() 
-#   )
+test_forecast_tuned_tbl %>%
+  filter(hierachy == "store") %>%
+  filter(identifier %in% c("KaggleMart", "KaggleRama")) %>%
+  select(identifier, .model_desc, .index, .value) %>%
+  pivot_wider(names_from = .model_desc, values_from = .value) %>%
+  filter(!is.na(RANGER_Tuned)) %>%
+  pivot_longer(cols = XGBOOST_Tuned:RANGER_Tuned) %>%
+  group_by(identifier, name) %>%
+  summarize_accuracy_metrics(
+    truth      = ACTUAL,
+    estimate   = value,
+    metric_set = default_forecast_accuracy_metric_set()
+  )
 
 # ******************************************************************************
 # REFIT MODELS TO FULL DATA ----
 # ******************************************************************************
 
 # * Ranger Full Data Fit ----
-wflw_fit_ranger_tuned <- wflw_spec_ranger_tune %>% 
+wflw_final_ranger_tuned <- wflw_spec_ranger_tune %>% 
     finalize_workflow(select_best(tune_results_ranger, "rmse")) %>% 
     fit(bind_rows(train_tbl, test_tbl))
 
 # * Xgboost Full Data Fit ----
-wflw_fit_xgboost_tuned <- wflw_spec_ranger_tune %>% 
+wflw_final_xgboost_tuned <- wflw_spec_xgboost_tune %>% 
     finalize_workflow(select_best(tune_results_xgboost, "rmse")) %>% 
     fit(bind_rows(train_tbl, test_tbl))
+
+
+# ******************************************************************************
+# CODE FOR FUTURE FORECAST ----
+# ******************************************************************************
+future_forecast_tbl <- calibration_tuned_tbl %>%
+    modeltime_forecast(
+        new_data    = future_data_tbl,
+        actual_data = test_tbl %>% filter(date >= as.Date("2020-12-01")),
+        keep_data   = TRUE
+    ) 
+
 
 # ******************************************************************************
 # SAVE ARTIFACTS ----
 # ******************************************************************************
 artifacts_list <- list(
+    
     # Data
     data = list(
-        data_prepared_tbl = data_prepared_tbl,
-        future_data_tbl   = future_data_tbl,
-        train_tbl         = train_tbl,
-        test_tbl          = test_tbl
+        data_prepared_tbl      = data_prepared_tbl,
+        future_data_tbl        = future_data_tbl,
+        train_tbl              = train_tbl,
+        test_tbl               = test_tbl,
+        test_data_forecast_tbl = test_forecast_tuned_tbl,
+        future_forecast_tbl    = future_forecast_tbl
     ),
     
     # Recipes
@@ -538,8 +492,8 @@ artifacts_list <- list(
     
     # Tuned Models
     models = list(
-        wflw_fit_ranger_tuned,
-        wflw_fit_xgboost_tuned
+        ranger  = wflw_final_ranger_tuned,
+        xgboost = wflw_final_xgboost_tuned
     )
 )
 
@@ -547,59 +501,6 @@ artifacts_list %>% write_rds("../Artifacts//artifacts_list.rds")
 
 
 
-df_test <- train_raw_tbl %>%
-    group_by(country) %>%
-    summarise(total_num_sold = sum(num_sold)) %>%
-    ungroup() %>%
-    arrange(desc(total_num_sold)) %>% 
-    mutate(code = case_when(
-        country == "Belgium" ~ "BEL",
-        country == "Germany" ~ "DEU",
-        country == "Italy" ~ "ITA",
-        country == "Poland" ~ "POL",
-        country == "Spain" ~ "ESP",
-        country == "France" ~ "FRA"
-    ))
+
+
     
-
-df_test %>% 
-    plotly::plot_geo(locations = df_test$code) %>% 
-    plotly::add_trace(
-        z         = ~total_num_sold, 
-        locations = ~ code, 
-        color     = ~total_num_sold
-    )
-
-plotly::plot_ly(df_test,
-                type = "choropleth",
-                locations = df_test$code,
-                z=df_test$total_num_sold,
-                text = df_test$country,
-                colorscale = "Blues")
-
-df <- read.csv('https://raw.githubusercontent.com/plotly/datasets/master/2014_world_gdp_with_codes.csv') %>% 
-    as_tibble()
-df %>% 
-    filter(COUNTRY %in% c("Belgium", "Germany", "France", "Italy", "Spain", "Poland"))
-
-# Libraries
-library(tidyverse)
-library(plotly)
-
-# Data
-countries <- c("Germany", "Belgium", "Framce", "Italy", "Spain", "Poland")
-codes     <- c("DEU", "BEL", "FRA", "ITA", "ESP", "POL")
-values    <- c(100, 200, 300, 400, 500, 600)
-
-df <- tibble(countries, codes, values)
-
-# Maps
-plot_geo(locations = df$codes) %>% 
-    add_trace(
-        z = ~values,
-        locations = ~codes,
-        color = ~values
-    )
-    
-
-
