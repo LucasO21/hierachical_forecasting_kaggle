@@ -467,7 +467,7 @@ wflw_final_xgboost_tuned <- wflw_spec_xgboost_tune %>%
 future_forecast_tbl <- calibration_tuned_tbl %>%
     modeltime_forecast(
         new_data    = future_data_tbl,
-        actual_data = test_tbl %>% filter(date >= as.Date("2020-12-01")),
+        actual_data = bind_rows(train_tbl, test_tbl),
         keep_data   = TRUE
     ) 
 
