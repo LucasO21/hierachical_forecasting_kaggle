@@ -153,16 +153,186 @@ train_cleaned_tbl %>%
 # RECIPE ----
 # ******************************************************************************
 
-recipe_spec <- recipe(num_sold ~., data = train_cleaned_tbl) %>% 
-    step_rm(row_id) %>% 
+recipe_spec <- recipe(total_sold ~., data = train_cleaned_tbl) %>% 
     step_timeseries_signature(date) %>% 
     step_rm(matches("(.iso)|(.xts)|(hour)|(minute)(second)(am.pm)")) %>% 
     step_dummy(all_nominal(), one_hot = TRUE) %>% 
     step_normalize(date_index.num, date_year)
 
 recipe_spec %>% prep() %>% juice() %>% glimpse()
-    
-    
-    
+
+# ******************************************************************************
+# MODELING ----
+# ******************************************************************************
+
+# * Xgboost ----
+wflw_fit_xgboost <- workflow() %>% 
+    add_model(spec = boost_tree() %>% set_mode("regression") %>% set_engine("xgboost")) %>% 
+    add_recipe(recipe_spec %>% step_rm(date)) %>% 
+    fit(train_cleaned_tbl)
+
+# * Random Forest ----
+wflw_fit_ranger <- workflow() %>% 
+    add_model(rand_forest() %>% set_mode("regression") %>% set_engine("ranger")) %>% 
+    add_recipe(recipe_spec %>% step_rm(date)) %>% 
+    fit(train_cleaned_tbl)
 
 
+# ******************************************************************************
+# MODELTIME TABLE ----
+# ******************************************************************************
+modeltime_table_fit <- modeltime_table(
+    wflw_fit_xgboost,
+    wflw_fit_ranger
+)
+
+calibration_fit_tbl <- modeltime_table_fit %>% 
+    modeltime_calibrate(test_tbl) %>% 
+    modeltime_accuracy() %>% 
+    arrange((rmse))
+
+
+# ******************************************************************************
+# HYPER PARAMETER TUNING ----
+# ******************************************************************************
+
+# * K FOLD Resamples ----
+set.seed(123)
+resamples_kfold <- train_cleaned_tbl %>% vfold_cv(v = 5)
+
+resamples_kfold %>%
+    tk_time_series_cv_plan() %>% 
+    plot_time_series_cv_plan(date, total_sold, .facet_ncol = 2)
+
+# * Parallel Processing ----
+registerDoFuture()
+n_cores <- 4
+plan(strategy = cluster, workers = makeCluster(n_cores))
+
+
+# * Xgboost Tune ----
+
+# ** Spec ----
+model_spec_xgboost_tune <- boost_tree(
+    mode           = "regression",
+    mtry           = tune(),
+    trees          = tune(),
+    min_n          = tune(),
+    tree_depth     = tune(),
+    learn_rate     = tune(),
+    loss_reduction = tune()
+) %>% 
+    set_engine("xgboost")
+
+# ** Workflow ----
+wflw_spec_xgboost_tune <- workflow() %>% 
+    add_model(model_spec_xgboost_tune) %>% 
+    add_recipe(recipe_spec %>% step_rm(date))
+
+# ** Tuning ----
+tic()
+set.seed(123)
+tune_results_xgboost <- wflw_spec_xgboost_tune %>% 
+    tune_grid(
+        resamples  = resamples_kfold,
+        # param_info = parameters(wflw_spec_xgboost_tune) %>% 
+        #   update(learn_rate = learn_rate(c(0.001, 0.400), trans = NULL)),
+        grid       = 10,
+        control    = control_grid(verbose = TRUE, allow_par = TRUE)
+        
+    )
+toc()
+
+# ** Results ----
+tune_results_xgboost %>% show_best("rmse", n = 5)
+
+# ** Finalize ----
+wflw_fit_xgboost_tuned <- wflw_spec_xgboost_tune %>% 
+    finalize_workflow(select_best(tune_results_xgboost, "rmse")) %>% 
+    fit(train_cleaned_tbl)
+    
+
+# ******************************************************************************
+# ACCURACY CHECK (TUNED MODELS) ----
+# ******************************************************************************
+
+# * Modeltime Table ----
+modeltime_table_tuned_tbl <- modeltime_table(wflw_fit_xgboost_tuned)%>% 
+    mutate(.model_desc = paste0(.model_desc, "_Tuned"))
+
+# * Calibrate ----
+calibration_tuned_tbl <- modeltime_table_tuned_tbl %>% 
+    modeltime_calibrate(test_tbl)
+
+# * Accuracy ----
+accuracy_tuned_tbl <- calibration_tuned_tbl %>% 
+    modeltime_accuracy(test_tbl) %>% 
+    arrange(rmse)
+
+# * Visualize Test Forecast ----
+test_forecast_tuned_tbl <- calibration_tuned_tbl %>% 
+    modeltime_forecast(
+        new_data    = test_tbl,
+        actual_data = data_prepared_tbl,
+        keep_data   = TRUE
+    ) 
+    
+# ** Test Forecast by Country ----
+test_tbl %>% distinct(id)
+
+test_forecast_tuned_tbl %>% 
+    filter(id %in% c("BELKGMKAT", "BELKGMKFK", "BELKGMKGS", "BELKGMKRB")) %>% 
+    group_by(id) %>% 
+    plot_modeltime_forecast(
+        .facet_ncol          = 2,
+        .conf_interval_alpha = 0.1,
+        .interactive         = TRUE
+    )
+
+
+# ******************************************************************************
+# REFIT MODELS TO FULL DATA ----
+# ******************************************************************************
+
+# * Xgboost Full Data Fit ----
+wflw_final_xgboost_tuned <- wflw_spec_xgboost_tune %>% 
+    finalize_workflow(select_best(tune_results_xgboost, "rmse")) %>% 
+    fit(bind_rows(train_tbl, test_tbl))
+
+
+# ******************************************************************************
+# CODE FOR FUTURE FORECAST ----
+# ******************************************************************************
+future_forecast_tbl <- calibration_tuned_tbl %>%
+    modeltime_forecast(
+        new_data    = future_data_tbl,
+        actual_data = test_tbl %>% filter(date >= as.Date("2020-12-01")),
+        keep_data   = TRUE
+    ) 
+
+# ******************************************************************************
+# SAVE ARTIFACTS ----
+# ******************************************************************************
+artifacts_list_version2 <- list(
+    
+    # Data
+    data = list(
+        data_prepared_tbl      = data_prepared_tbl,
+        future_data_tbl        = future_data_tbl,
+        train_tbl              = train_tbl,
+        test_tbl               = test_tbl,
+        test_data_forecast_tbl = test_forecast_tuned_tbl,
+        future_forecast_tbl    = future_forecast_tbl,
+        accuracy_tuned_tbl     = accuracy_tuned_tbl
+    ),
+    
+    # Recipes
+    recipe = list(recipe = recipe_spec),
+    
+    # Tuned Models
+    models = list(
+        xgboost = wflw_final_xgboost_tuned
+    )
+)
+
+artifacts_list_version2 %>% write_rds("../Artifacts//artifacts_list_version2.rds")
