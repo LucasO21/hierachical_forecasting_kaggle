@@ -20,81 +20,34 @@ library(raster)
 library(leaflet)
 
 
-# * Load Data ----
-products_tbl <- vroom::vroom("../Data/train.csv") %>%
-    clean_names() %>%
-    as_tibble() %>%
-    filter(date >= as.Date("2018-01-01")) %>%
-    mutate(cost = num_sold * 1.99) %>%
-    mutate(sales = num_sold * 5.99) %>%
-    mutate(profit = sales - cost)
-
-products_tbl %>% glimpse()
-
-
-# * Params ----
-# min_date <- as.Date("2020-01-01")
-# max_date <- as.Date("2020-03-31")
-# country  <- "Belgium"
-# store    <- "KaggleMart"
-# product  <- "Kaggle Advanced Techniques"
-
-
-# * Data Filtered ----
-# data_filtered <- products_tbl %>% 
-#     filter(between(date, .min_date, .max_date)) %>% 
-#     filter(country %in% .country) %>% 
-#     filter(store %in% .store) %>% 
-#     filter(product %in% .product)
-# 
-# data <- data_filtered
-
 # **********************************************************************
 # FUNCTIONS ----
 # **********************************************************************
 
-# * Value Boxes ----
-get_value_box <- function(data){
+# Load Dataset ----
+get_raw_data <- function(){
     
-    data %>% 
-        # filter(between(date, .min_date, .max_date)) %>% 
-        # filter(country %in% .country) %>% 
-        # filter(store %in% .store) %>% 
-        # filter(product %in% .product) %>% 
-        summarise(
-            num_sold = sum(num_sold),
-            cogs     = sum(cost),
-            sales    = sum(sales),
-            profit   = sum(profit)
-        ) %>% 
-        mutate(profit_margin = profit / sales) %>% 
-        mutate(
-            num_sold = num_sold %>% scales::comma(),
-            sales    = sales %>% scales::dollar(accuracy = 1),
-            cogs     = cogs %>% scales::dollar(accuracy = 1),
-            profit   = profit %>% scales::dollar(accuracy = 1),
-            profit_margin = profit_margin %>% scales::percent(accuracy = 1)
-        )
-        
-   
+    output <- vroom::vroom("../Data/train.csv") %>%
+        clean_names() %>%
+        as_tibble() %>%
+        filter(date >= as.Date("2018-01-01"))
+    
+    return(output)
 }
 
-# value_box_tbl <- get_value_box(data = data_filtered)
 
-# Country Map of Sales ----
-get_sales_map_plot <- function(data){
+
+# Prep Product Sales Data ----
+get_product_sales_data <- function(data){
     
-    sales_by_country_tbl <- data %>% 
-        group_by(country) %>% 
-        summarise(
-            total_sold = sum(num_sold),
-            total_sales = sum(sales)
-        ) %>% 
-        mutate(
-            total_sold_text = total_sold %>% scales::dollar(accuracy = 1),
-            total_sales_text = total_sales %>% scales::dollar(accuracy = 1)
-        ) %>% 
-        ungroup() %>% 
+    # Pricing Dataframe
+    product <- unique(data$product)
+    cost    <- c(1.99, 1.89, 1.29, 1.59)
+    price   <- c(5.99, 4.99, 3.99, 4.99) 
+    
+    pricing_tbl <- tibble(product, cost, price)
+    
+    output <- data %>% 
         mutate(country_code = case_when(
             country == "Belgium" ~ "BEL",
             country == "France"  ~ "FRA", 
@@ -103,15 +56,84 @@ get_sales_map_plot <- function(data){
             country == "Poland"  ~ "POL",
             country == "Spain"   ~ "ESP"
         )) %>% 
+        left_join(pricing_tbl) %>% 
+        mutate(total_cost = num_sold * cost) %>%
+        mutate(total_sales = num_sold * price) %>%
+        mutate(total_profit = total_sales - total_cost)
+    
+    return(output)
+    
+}
+
+# sales_data <- get_raw_data() %>% get_product_sales_data()
+
+# **********************************************************************
+
+# * Value Boxes ----
+get_value_box <- function(data){
+    
+    output <- data %>% 
+        # filter(between(date, .min_date, .max_date)) %>% 
+        # filter(country %in% .country) %>% 
+        # filter(store %in% .store) %>% 
+        # filter(product %in% .product) %>% 
+        summarise(
+            total_sold   = sum(num_sold),
+            total_cogs   = sum(total_cost),
+            total_sales  = sum(total_sales),
+            total_profit = sum(total_profit)
+        ) %>% 
+        mutate(profit_margin = total_profit / total_sales) %>% 
+        mutate(
+            total_sold_txt    = total_sold %>% scales::comma(),
+            total_sales_txt   = total_sales %>% scales::dollar(accuracy = 1),
+            total_cogs_txt    = total_cogs %>% scales::dollar(accuracy = 1),
+            total_profit_txt  = total_profit %>% scales::dollar(accuracy = 1),
+            profit_margin_txt = profit_margin %>% scales::percent(accuracy = 1)
+        )
+    
+    return(output)
+        
+   
+}
+
+# value_box_data <-  sales_data %>% get_value_box()
+
+# **********************************************************************
+
+# Data Prep For Sales Map ----
+get_sales_map_data <- function(data){
+    
+    data %>% 
+        group_by(country, country_code) %>% 
+        summarise(
+            total_sold = sum(num_sold),
+            total_sales = sum(total_sales)
+        ) %>% 
+        mutate(
+            total_sold_text = total_sold %>% scales::dollar(accuracy = 1),
+            total_sales_text = total_sales %>% scales::dollar(accuracy = 1)
+        ) %>% 
+        ungroup() %>% 
         mutate(tool_tip_label = str_glue(
             "Country: {country}
-        Total Sold: {total_sold_text}
+        Books Sold: {total_sold_text}
         Total Sales: {total_sales_text}"
         
         ))
     
-    p <- sales_by_country_tbl %>% 
-        plot_geo(locations = sales_by_country_tbl$country_code) %>% 
+}
+#---
+
+# map_data <- sales_data %>% get_sales_map_data()
+
+# **********************************************************************
+
+# Country Map of Sales ----
+get_sales_map_plot_plotly <- function(data){
+    
+    p <- data %>% 
+        plot_geo(locations = data$country_code) %>% 
         add_trace(
             z         = ~total_sold, 
             locations = ~country_code, 
@@ -124,43 +146,42 @@ get_sales_map_plot <- function(data){
                 lonaxis = list(range = c(-15, 23)),
                 lataxis = list(range = c(35, 60)),
                 showlakes = TRUE,
-                lakecolor = toRGB("white")
+                lakecolor = toRGB("white"),
             )
-        )
+        ) %>% 
+        layout(legend = list(orientation = 'h'))
     
     return(p)
     
 }
 
-products_tbl %>% get_sales_map_plot()
+# sales_data %>% get_sales_map_data() %>% get_sales_map_plot_plotly()
 
+# **********************************************************************
 
-period   <- "day"
-lookback <- 365/2
+# Sales Trend Plot Data ----
+# data          <- sales_data
+# period        <- "week"
+# lookback_days <- 365
 
-data <- products_tbl
-by   <- "day"
-
-get_trend_plot_data <- function(data, by, lookback_days = 500){
+get_trend_plot_data <- function(data, period, lookback = 90){
     
-    # Look Back Setup
-    # if(by == "day") lookback_days  <- lookback_days
-    # if(by == "week") lookback_days <- lookback_days/7
-    
-    if(by == "day" & lookback_days > 90) lookback_days = 90
-    if(by == "week" & lookback_days > 360) lookback_days = 360/7
+    if(period == "day" & lookback > 90) lookback = 90
+    if(period == "week" & lookback > 52) lookback = 52
+    if(period == "month" & lookback > 24) lookback = 24
     
     data_prep <- data %>% 
-        summarise_by_time(date, by, num_sold = sum(num_sold)) %>% 
+        summarise_by_time(date, period, total_sold = sum(num_sold)) %>% 
         bind_cols(
             data %>% 
-                summarise_by_time(date, by, sales = sum(sales)) %>% 
-                select(sales)
+                summarise_by_time(date, period, total_sales = sum(total_sales)) %>% 
+                dplyr::select(total_sales)
         ) %>% 
-        tail(lookback_days) %>% 
+        tail(lookback) %>% 
         mutate(label_text = str_glue("
-                            Products Sold: {num_sold %>% scales::comma(accuracy = 1)}
-                            Sales: {sales %>% scales::dollar(accuracy = 1)}
+                            Date: {date}
+                            Books Sold: {total_sold %>% scales::comma(accuracy = 1)}
+                            Sales: {total_sales %>% scales::dollar(accuracy = 1)}
                             
                             "))
     
@@ -168,66 +189,100 @@ get_trend_plot_data <- function(data, by, lookback_days = 500){
     
 }
 
-get_trend_plot_data(products_tbl, "week", lookback_days = 500)
+# sales_data %>% get_trend_plot_data("month", lookback = 365)
 
 
-get_trend_plot <- function(data){
-    
-    p <-  data %>% 
-        ggplot(aes(date, sales))+
-        geom_line(size = 0.5)+
-        geom_point(aes(text = label_text), size = 0.8)+
-        expand_limits(y = 0)+
-        geom_smooth(method = "loess", span = 0.15)+
-        scale_y_continuous(labels = scales::dollar_format())+
-        scale_x_date(date_breaks = "months", date_labels = "%b-%y")+
-        theme_minimal()+
-        theme(axis.text = element_text(size = 10))+
-        labs(y = NULL, x = NULL)
-    
-    p <- ggplotly(p, tooltip = "text")
-    
-    return(p)
-    
-}
+# Sales Trend Plot ----
+# get_sales_trend_plot_area <- function(data){
+#     
+#     p <- data %>% 
+#         ggplot(aes(date, total_sales))+
+#         geom_area(fill = "lightblue", alpha = 0.6)+
+#         geom_line(size = 1, color = "lightblue")+
+#         geom_point(aes(text = label_text), size = 2, color = "lightblue")+
+#         scale_y_continuous(labels = scales::dollar_format())+
+#         theme_minimal()+
+#         scale_x_date(date_breaks = "2 months", date_labels = "%b-%y")+
+#         theme_minimal()+
+#         theme(axis.text = element_text(size = 10))+
+#         labs(y = NULL, x = NULL)
+#     
+#     p <- ggplotly(p, tooltip = "text")
+#     
+#     return(p)
+#     
+#     
+# }
 
-get_trend_plot_data(products_tbl, "week", lookback_days = 360) %>% 
-    get_trend_plot()
-
-
-
-
-sales_by_country_tbl
-
-eu_iso <- c(BEL = "BEL", FRA = "FRA", DEU = "DEU", ITA = "ITA", POL = "POL", ESP = "ESP")
-
-eu <- list()
-
-for(country_code in eu_iso){
-    eu[[country_code]] <- getData("GADM", country = eu_iso[country_code], level = 1)
-}
-
-EU <- rbind(eu$BEL, eu$FRA, eu$DEU, eu$ITA, eu$POL, eu$ESP, makeUniqueIDs = TRUE)
-
-col_pal <- colorQuantile(palette = "BuPu", domain = sales_by_country_tbl$total_sales)
-
-leaflet() %>% 
-    addTiles() %>% 
-    addPolygons(data = EU, 
-                stroke = FALSE,
-                fillColor = ~col_pal(sales_by_country_tbl$total_sales),
-                popup = paste("Text", sales_by_country_tbl$total_sales_text, "<br>"),
-                fillOpacity = 0.9,
-                color = "white",
-                weight = 0.3) %>% 
-    addLegend(position = "bottomleft", pal = col_pal,
-              values = sales_by_country_tbl$total_sales, title = "Total Sales")
-
-col_pal <- colorNumeric(
-    palette = "Blues",
-    domain = sales_by_country_tbl$total_sales
-)
+# sales_data %>% get_trend_plot_data("week", lookback = 365) %>% get_sales_trend_plot_area()
 
 
-?getData
+# Count Sold by Product Data ----
+# get_sold_count_by_product_data <- function(data, period, lookback_days){
+#     
+#     data %>% 
+#         group_by(product) %>% 
+#         summarise_by_time(date, period, total_sold = sum(num_sold)) %>% 
+#         ungroup() %>% 
+#         tail(lookback_days)
+#     
+# }
+
+# Count Sold by Product Plot ----
+# get_sold_count_by_product_plot <- function(data){
+#     
+#     p <- data %>% 
+#         mutate(label_text = str_glue("Product: {product}
+#                                  Total Sold: {total_sold %>% scales::comma(accuracy = 1)}")) %>% 
+#         ggplot(aes(date, total_sold, fill = product))+
+#         geom_col(aes(text = label_text))+
+#         theme_minimal()+
+#         tidyquant::scale_fill_tq()+
+#         scale_y_continuous(labels = scales::comma_format())+
+#         theme(axis.text = element_text(size = 10))+
+#         theme(legend.position = "none")+
+#         labs(x = NULL, y = NULL)
+#     
+#     ggplotly(p, tooltip = "text") 
+# }
+
+
+
+
+
+
+
+# Sales Map with Leaflet ----
+# eu_iso <- c(BEL = "BEL", FRA = "FRA", DEU = "DEU", ITA = "ITA", POL = "POL", ESP = "ESP")
+# 
+# eu <- list()
+# 
+# for(country_code in eu_iso){
+#     eu[[country_code]] <- getData("GADM", country = eu_iso[country_code], level = 0)
+# }
+# 
+# EU <- rbind(eu$BEL, eu$FRA, eu$DEU, eu$ITA, eu$POL, eu$ESP, makeUniqueIDs = TRUE)
+# 
+# col_pal <- colorQuantile(palette = "BuPu", domain = sales_data$total_sales)
+# 
+# leaflet() %>%
+#     addTiles() %>%
+#     addPolygons(data = EU,
+#                 stroke = FALSE,
+#                 fillColor = ~col_pal(sales_data$total_sales),
+#                 popup = paste("Text", sales_data$total_sales_text, "<br>"),
+#                 fillOpacity = 0.9,
+#                 color = "white",
+#                 weight = 0.3) %>%
+#     addLegend(position = "bottomleft", pal = col_pal,
+#               values = sales_data$total_sales, title = "Total Sales")
+# 
+# col_pal <- colorNumeric(
+#     palette = "Blues",
+#     domain = sales_by_country_tbl$total_sales
+# )
+# ----
+
+
+
 
