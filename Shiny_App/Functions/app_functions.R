@@ -24,7 +24,7 @@ library(leaflet)
 # FUNCTIONS ----
 # **********************************************************************
 
-# Load Dataset ----
+# Load Raw Data ----
 get_raw_data <- function(){
     
     output <- vroom::vroom("../Data/train.csv") %>%
@@ -34,7 +34,6 @@ get_raw_data <- function(){
     
     return(output)
 }
-
 
 
 # Prep Product Sales Data ----
@@ -67,9 +66,8 @@ get_product_sales_data <- function(data){
 
 # sales_data <- get_raw_data() %>% get_product_sales_data()
 
-# **********************************************************************
 
-# * Value Boxes ----
+# Value Boxes ----
 get_value_box <- function(data){
     
     output <- data %>% 
@@ -99,7 +97,6 @@ get_value_box <- function(data){
 
 # value_box_data <-  sales_data %>% get_value_box()
 
-# **********************************************************************
 
 # Data Prep For Sales Map ----
 get_sales_map_data <- function(data){
@@ -126,8 +123,6 @@ get_sales_map_data <- function(data){
 #---
 
 # map_data <- sales_data %>% get_sales_map_data()
-
-# **********************************************************************
 
 # Country Map of Sales ----
 get_sales_map_plot_plotly <- function(data){
@@ -157,26 +152,23 @@ get_sales_map_plot_plotly <- function(data){
 
 # sales_data %>% get_sales_map_data() %>% get_sales_map_plot_plotly()
 
-# **********************************************************************
 
-# Sales Trend Plot Data ----
-# data          <- sales_data
-# period        <- "week"
-# lookback_days <- 365
-
-get_trend_plot_data <- function(data, period, lookback = 90){
+# Data Prep - Sales Trend Plot ----
+get_trend_plot_data <- function(data, period){
     
-    if(period == "day" & lookback > 90) lookback = 90
-    if(period == "week" & lookback > 52) lookback = 52
-    if(period == "month" & lookback > 24) lookback = 24
-    
-    data_prep <- data %>% 
+   data_prep <- data %>% 
         summarise_by_time(date, period, total_sold = sum(num_sold)) %>% 
         bind_cols(
             data %>% 
                 summarise_by_time(date, period, total_sales = sum(total_sales)) %>% 
                 dplyr::select(total_sales)
         ) %>% 
+        arrange(date)
+   
+   if(period == "day" & n_distinct(data_prep$date) > 90) lookback = 90
+   if(period == "week" & n_distinct(data_prep$date) > 52) lookback = 52
+    
+    data_prep <- data_prep %>% 
         tail(lookback) %>% 
         mutate(label_text = str_glue("
                             Date: {date}
@@ -189,62 +181,103 @@ get_trend_plot_data <- function(data, period, lookback = 90){
     
 }
 
-# sales_data %>% get_trend_plot_data("month", lookback = 365)
+# sales_data %>% get_trend_plot_data("week")
 
 
 # Sales Trend Plot ----
-# get_sales_trend_plot_area <- function(data){
-#     
-#     p <- data %>% 
-#         ggplot(aes(date, total_sales))+
-#         geom_area(fill = "lightblue", alpha = 0.6)+
-#         geom_line(size = 1, color = "lightblue")+
-#         geom_point(aes(text = label_text), size = 2, color = "lightblue")+
-#         scale_y_continuous(labels = scales::dollar_format())+
-#         theme_minimal()+
-#         scale_x_date(date_breaks = "2 months", date_labels = "%b-%y")+
-#         theme_minimal()+
-#         theme(axis.text = element_text(size = 10))+
-#         labs(y = NULL, x = NULL)
-#     
-#     p <- ggplotly(p, tooltip = "text")
-#     
-#     return(p)
-#     
-#     
-# }
+get_sales_trend_plot_area <- function(data){
+    
+    diff_days <- as.numeric(str_extract(data$date[2] - data$date[1], "(\\d+)"))
+    
+    if(diff_days > 7){
+        .date_breaks = "3 months"
+    } else if (diff_days < 6){
+        .date_breaks = "14 day"
+    } else {
+        .date_breaks = "2 months"
+    }
+    
 
-# sales_data %>% get_trend_plot_data("week", lookback = 365) %>% get_sales_trend_plot_area()
+    p <- data %>%
+        ggplot(aes(date, total_sales))+
+        geom_area(fill = "lightblue", alpha = 0.6)+
+        geom_line(size = 1, color = "lightblue")+
+        geom_point(aes(text = label_text), size = 2, color = "lightblue")+
+        scale_y_continuous(labels = scales::dollar_format())+
+        theme_minimal()+
+        scale_x_date(date_breaks = .date_breaks, date_labels = "%b-%y")+
+        theme_minimal()+
+        theme(axis.text = element_text(size = 8))+
+        labs(y = NULL, x = NULL)
+
+    p <- ggplotly(p, tooltip = "text")
+
+    return(p)
 
 
-# Count Sold by Product Data ----
-# get_sold_count_by_product_data <- function(data, period, lookback_days){
-#     
-#     data %>% 
-#         group_by(product) %>% 
-#         summarise_by_time(date, period, total_sold = sum(num_sold)) %>% 
-#         ungroup() %>% 
-#         tail(lookback_days)
-#     
-# }
+}
 
-# Count Sold by Product Plot ----
-# get_sold_count_by_product_plot <- function(data){
-#     
-#     p <- data %>% 
-#         mutate(label_text = str_glue("Product: {product}
-#                                  Total Sold: {total_sold %>% scales::comma(accuracy = 1)}")) %>% 
-#         ggplot(aes(date, total_sold, fill = product))+
-#         geom_col(aes(text = label_text))+
-#         theme_minimal()+
-#         tidyquant::scale_fill_tq()+
-#         scale_y_continuous(labels = scales::comma_format())+
-#         theme(axis.text = element_text(size = 10))+
-#         theme(legend.position = "none")+
-#         labs(x = NULL, y = NULL)
-#     
-#     ggplotly(p, tooltip = "text") 
-# }
+# sales_data %>% get_trend_plot_data("day") %>% get_sales_trend_plot_area()
+
+
+# Data Prep - Sales by Product Barplot ----
+get_sold_count_by_product_data <- function(data, period){
+    
+   data_prep <- data %>%
+       group_by(product) %>%
+       summarise_by_time(date, period, total_sold = sum(num_sold)) %>%
+       ungroup()
+    
+    if(period == "day" & n_distinct(data_prep$date) > 90) lookback = 90
+    if(period == "week" & n_distinct(data_prep$date) > 52) lookback = 52
+    
+    data_prep <- data_prep %>% 
+        pivot_wider(names_from = product, values_from = total_sold) %>% 
+        arrange(date) %>% 
+        tail(lookback) %>% 
+        pivot_longer(cols = `Kaggle Advanced Techniques`:`Kaggle Recipe Book`,
+                     names_to = "product", values_to = "total_sold")
+    
+    return(data_prep)
+
+}
+
+# sales_data %>% get_sold_count_by_product_data("day")
+
+
+# Sales by Product Barplot  ----
+get_sold_count_by_product_plot <- function(data){
+    
+    diff_days <- as.numeric(str_extract(data$date[5] - data$date[1], "(\\d+)"))
+    
+    if(diff_days > 7){
+        .date_breaks = "3 months"
+    } else {
+        .date_breaks = "1 months"
+    }
+
+    p <- data %>%
+        mutate(label_text = str_glue("Date: {date}
+                                     Product: {product}
+                                     Total Sold: {total_sold %>% scales::comma(accuracy = 1)}")) %>%
+        ggplot(aes(date, total_sold, fill = factor(product)))+
+        geom_col(aes(text = label_text))+
+        theme_minimal()+
+        scale_x_date(date_breaks = .date_breaks, date_labels = "%b-%y")+
+        tidyquant::scale_fill_tq()+
+        scale_y_continuous(labels = scales::comma_format())+
+        theme(axis.text = element_text(size = 8))+
+        theme(legend.position = "none")+
+        labs(x = NULL, y = NULL)
+
+    ggplotly(p, tooltip = "text")
+}
+
+# data <- 
+#     sales_data %>% 
+#     get_sold_count_by_product_data("week") %>% 
+#     # distinct(product) %>% 
+#     get_sold_count_by_product_plot()
 
 
 
