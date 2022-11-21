@@ -294,21 +294,27 @@ test_forecast_tuned_tbl %>%
 # REFIT MODELS TO FULL DATA ----
 # ******************************************************************************
 
-# * Xgboost Full Data Fit ----
-wflw_final_xgboost_tuned <- wflw_spec_xgboost_tune %>% 
-    finalize_workflow(select_best(tune_results_xgboost, "rmse")) %>% 
-    fit(bind_rows(train_tbl, test_tbl))
+model_refit_xgboost_tbl <- modeltime_table_tuned_tbl %>% 
+    modeltime_refit(
+        data_prepared_tbl %>% 
+            mutate(total_sold = ts_clean_vec(total_sold, period = 3)) %>% 
+            ungroup()    
+        )
 
 
 # ******************************************************************************
 # CODE FOR FUTURE FORECAST ----
 # ******************************************************************************
-future_forecast_tbl <- calibration_tuned_tbl %>%
+future_forecast_tbl <- model_refit_xgboost_tbl %>% 
     modeltime_forecast(
         new_data    = future_data_tbl,
-        actual_data = test_tbl %>% filter(date >= as.Date("2020-12-01")),
-        keep_data   = TRUE
-    ) 
+        actual_data = test_tbl,
+        keep_data   = TRUE 
+    )
+    
+future_forecast_tbl %>% glimpse()
+
+future_data_tbl %>% glimpse()
 
 # ******************************************************************************
 # SAVE ARTIFACTS ----
@@ -323,7 +329,10 @@ artifacts_list_version2 <- list(
         test_tbl               = test_tbl,
         test_data_forecast_tbl = test_forecast_tuned_tbl,
         future_forecast_tbl    = future_forecast_tbl,
-        accuracy_tuned_tbl     = accuracy_tuned_tbl
+        accuracy_tuned_tbl     = accuracy_tuned_tbl,
+        country_code_tbl       = country_code_tbl,
+        store_code_tbl         = store_code_tbl,
+        product_code_tbl       = product_code_tbl
     ),
     
     # Recipes
@@ -331,7 +340,7 @@ artifacts_list_version2 <- list(
     
     # Tuned Models
     models = list(
-        xgboost = wflw_final_xgboost_tuned
+        xgboost = model_refit_xgboost_tbl
     )
 )
 
