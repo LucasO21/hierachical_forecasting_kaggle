@@ -141,7 +141,7 @@ get_sales_map_plot_plotly <- function(data){
                 lonaxis = list(range = c(-15, 23)),
                 lataxis = list(range = c(35, 60)),
                 showlakes = TRUE,
-                lakecolor = toRGB("white"),
+                lakecolor = toRGB("white")
             )
         ) %>% 
         layout(legend = list(orientation = 'h'))
@@ -200,9 +200,9 @@ get_sales_trend_plot_area <- function(data){
 
     p <- data %>%
         ggplot(aes(date, total_sales))+
-        geom_area(fill = "lightblue", alpha = 0.6)+
-        geom_line(size = 1, color = "lightblue")+
-        geom_point(aes(text = label_text), size = 2, color = "lightblue")+
+        geom_area(fill = "#2c3e50", alpha = 0.6)+
+        geom_line(size = 1, color = "#2c3e50")+
+        geom_point(aes(text = label_text), size = 2, color = "#2c3e50")+
         scale_y_continuous(labels = scales::dollar_format())+
         theme_minimal()+
         scale_x_date(date_breaks = .date_breaks, date_labels = "%b-%y")+
@@ -278,6 +278,7 @@ get_sold_count_by_product_plot <- function(data){
 #     get_sold_count_by_product_data("week") %>% 
 #     # distinct(product) %>% 
 #     get_sold_count_by_product_plot()
+
 
 
 
