@@ -77,6 +77,9 @@ get_future_forecast_data_prepared <- function(.data){
 }
 
 
+    
+
+
 get_test_forecast_data_prepared <- function(.data){
     
     output <- .data %>% 
@@ -88,7 +91,7 @@ get_test_forecast_data_prepared <- function(.data){
             total_sold = sum(total_sold)
         ) %>% 
         ungroup() %>% 
-        filter(.index >= as.Date("2020-11-01"))
+        filter(.index >= as.Date("2020-07-01"))
     
     return(output)
     
@@ -120,7 +123,20 @@ get_forecast_plot <- function(.data){
 #     get_forecast_plot()
 
 
-
-
+# ******************************************************************************
+# FORECAST DATA (DT TABLE) ----
+# ******************************************************************************
+get_future_forecast_data_prepared_dt <- function(.data){
+    
+    .data %>% 
+        get_future_forecast_data_prepared() %>% 
+        filter(.key == "prediction") %>% 
+        dplyr::select(.index, .key, .model_desc, .value) %>% 
+        rename(date = .index, key = .key, forecast_model = .model_desc,
+               forecast_value = .value) %>% 
+        mutate(forecast_value = forecast_value %>% scales::comma(accuracy = 1))
+    
+    
+}
 
 
