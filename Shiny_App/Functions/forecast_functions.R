@@ -9,6 +9,8 @@ library(tidyverse)
 library(janitor)
 library(lubridate)
 library(timetk)
+library(data.table)
+library(dtplyr)
 library(modeltime)
 
 # ******************************************************************************
@@ -139,4 +141,35 @@ get_future_forecast_data_prepared_dt <- function(.data){
     
 }
 
+
+# ******************************************************************************
+# TEST FORECAST ACCURACY DATA (DT TABLE) ----
+# ******************************************************************************
+get_test_forecast_metrics_dt <- function(.data){
+    
+    .data %>% 
+        group_by(.model_desc) %>% 
+        summarise_by_time(
+            .date_var = date,
+            .by       = "day",
+            .value    = sum(.value, na.rm = TRUE),
+            total_sold = sum(total_sold, na.rm = TRUE)
+        ) %>% 
+        ungroup() %>% 
+        pivot_wider(names_from = .model_desc, values_from = .value) %>% 
+        dplyr::select(-total_sold) %>% 
+        filter(!is.na(XGBOOST_Tuned)) %>% 
+        pivot_longer(cols = XGBOOST_Tuned) %>% 
+        summarize_accuracy_metrics(
+            truth = ACTUAL, 
+            estimate = value,
+            metric_set = default_forecast_accuracy_metric_set()
+        ) %>% 
+        ungroup() %>% 
+        mutate(across(.cols = mae:rsq, round, 3)) %>% 
+        setNames(names(.) %>% str_to_upper())
+}
+
+   
+        
 

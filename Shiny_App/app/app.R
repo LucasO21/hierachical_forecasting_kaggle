@@ -118,7 +118,7 @@ ui <-
                 width = 12,
                 tags$fieldset(
                     tags$legend("Future Forecast Data", tags$span(id = "ff_data_info", icon("info-circle"))),
-                    dataTableOutput("future_forecast_dt", height = "400px")
+                    dataTableOutput("future_forecast_dt", height = "300px")
                 )
             ),
         ), # end column
@@ -140,7 +140,8 @@ ui <-
             box(
                 width = 12,
                 tags$fieldset(
-                    tags$legend("Test Data Metrics", tags$span(id = "tm_data_info", icon("info-circle")))
+                    tags$legend("Test Data Metrics", tags$span(id = "tm_data_info", icon("info-circle"))),
+                    dataTableOutput("test_forecast_metrics_dt", height = "300px")
                 ) 
             ), # end test metrics datatable
             
@@ -217,11 +218,18 @@ server <- function(input, output) {
     })
     
     # * Future Forecast Data ----
-    output$future_forecast_dt <- renderDataTable({
+    output$future_forecast_dt <- DT::renderDataTable(
         future_forecast_filtered_tbl() %>% 
             get_future_forecast_data_prepared() %>% 
-            get_future_forecast_data_prepared_dt()
-    })
+            get_future_forecast_data_prepared_dt(),
+        options = list(pageLength = 5)
+    )
+    
+    # * Test Forecast Metrics ----
+    output$test_forecast_metrics_dt <- DT::renderDataTable(
+        test_forecast_filtered_tbl() %>% 
+            get_test_forecast_metrics_dt()
+    )
 
     # * Apply / Reset Reactive Filters (Sales Tab) ----
     shiny::observeEvent(eventExpr = input$reset, handlerExpr = {
