@@ -37,10 +37,11 @@ test_forecast_tbl   <- load_data(ret = "test_forecast")
 ui <-
     dashboardPage(
     dashboardHeader(title = "Forecasting App"),
-
+    
+    # * Sidebar Panel ----
     dashboardSidebar(
 
-        # * Country Picker ----
+        # ** Country Picker ----
         pickerInput(
             inputId  = "country_picker",
             label    = h4("Country"),
@@ -53,7 +54,7 @@ ui <-
                 `selected-text-format` = "count > 3"
             )),
 
-        # * Store Picker ----
+        # ** Store Picker ----
         pickerInput(
             inputId  = "store_picker",
             label    = h4("Store"),
@@ -66,7 +67,7 @@ ui <-
                 `selected-text-format` = "count > 1"
             )),
         
-        # * Product Picker
+        # ** Product Picker
         pickerInput(
             inputId  = "product_picker",
             label    = h4("Product Name"),
@@ -83,20 +84,32 @@ ui <-
         hr(),
         br(),
 
-        # * Apply Button ---
+        # ** Apply Button ---
         actionButton(
             inputId = "apply",
             label   = "Apply",
             icon    = icon(name = "play", lib = "font-awesome")
         ),
 
-        # * Reset Button ----
+        # ** Reset Button ----
         actionButton(
             inputId = "reset",
             label   = "Reset",
             icon    = icon(name = "sync")
+        ),
+        
+        br(),
+        hr(),
+        br(),
+        
+        # ** Download Button ----
+        downloadButton(
+            outputId = "download_forecast_data",
+            label    = "Download Forecast Data"
         )
     ),
+    
+    # Dashboard Body ----
     dashboardBody(
         useShinyjs(),
         
@@ -167,7 +180,7 @@ ui <-
         
         bsPopover(
             "tm_data_info", title = "Test Data Metrics",
-            content = "This table shows the RMSE metrics for the test data.",
+            content = "This table shows the metrics model performance on the test data.",
             placement = "left"
         ),
         
@@ -229,6 +242,23 @@ server <- function(input, output) {
     output$test_forecast_metrics_dt <- DT::renderDataTable(
         test_forecast_filtered_tbl() %>% 
             get_test_forecast_metrics_dt()
+    )
+    
+    # * Download Handler (Forecast Data) ----
+    output$download_forecast_data <- downloadHandler(
+        
+        filename = function(){
+            paste("future_forecast", "csv", sep = ".")
+        },
+        
+        content = function(file){
+            write.csv(
+                future_forecast_filtered_tbl() %>% 
+                    get_future_forecast_data_prepared() %>% 
+                    get_future_forecast_data_prepared_dt(),
+                file
+            )
+        }
     )
 
     # * Apply / Reset Reactive Filters (Sales Tab) ----

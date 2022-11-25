@@ -13,6 +13,7 @@ library(data.table)
 library(dtplyr)
 library(modeltime)
 
+
 # ******************************************************************************
 # LOAD DATA ----
 # ******************************************************************************
@@ -58,9 +59,8 @@ load_data <- function(ret = "future_forecast"){
 
 
 # ******************************************************************************
-# PREP DATA FOR PLOT ----
+# FUTURE FORECAST DATA PREP ----
 # ******************************************************************************
-# .data <- sample_future_forecast_tbl
 
 get_future_forecast_data_prepared <- function(.data){
     
@@ -79,8 +79,9 @@ get_future_forecast_data_prepared <- function(.data){
 }
 
 
-    
-
+# ******************************************************************************
+# TEST FORECAST DATA PREP ----
+# ******************************************************************************
 
 get_test_forecast_data_prepared <- function(.data){
     
