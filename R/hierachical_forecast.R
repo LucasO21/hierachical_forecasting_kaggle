@@ -39,7 +39,7 @@ library(parallel)
 # ******************************************************************************
 
 # * Train Data ----
-train_raw_tbl <- vroom::vroom("../Data/train.csv") %>% 
+train_raw_tbl <- vroom::vroom("../data/") %>% 
     clean_names() %>% 
     as_tibble() %>% 
     filter(date >= as.Date("2019-01-01"))
