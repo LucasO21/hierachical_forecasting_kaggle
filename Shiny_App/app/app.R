@@ -20,7 +20,7 @@ library(plotly)
 library(DT)
 
 # * Source ----
-source("../app_functions/forecast_functions.R")
+source("app_functions/forecast_functions.R")
 
 # Static Params ----
 country_list <- c("Belgium", "France", "Germany", "Italy", "Poland", "Spain")
