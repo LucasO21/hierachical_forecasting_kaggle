@@ -1,5 +1,6 @@
 # KAGGLE TPS SEPT 2022 ----
 # HIERACHICAL FORECASTING VERSION 3 ----
+# DUMMY VARIABLES FOR ALL HIERACHIES ----
 # EXPERIMENT SCRIPT ----
 #  **** ----
 
@@ -39,7 +40,7 @@ library(parallel)
 # ******************************************************************************
 
 # * Data ----
-train_raw_tbl <- vroom::vroom("../Data/train.csv") %>% 
+train_raw_tbl <- vroom::vroom("../data/train.csv") %>% 
     clean_names() %>% 
     as_tibble() %>% 
     filter(date >= as.Date("2019-01-01"))
