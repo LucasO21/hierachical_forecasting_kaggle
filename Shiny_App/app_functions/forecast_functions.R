@@ -2,7 +2,7 @@
 # **** ----
 
 # Set Working Dir ----
-setwd(here::here("shiny_app", "app_functions"))
+# setwd(here::here("shiny_app", "app_functions"))
 
 # Libraries ----
 library(tidyverse)
@@ -17,25 +17,18 @@ library(modeltime)
 # ******************************************************************************
 # LOAD DATA ----
 # ******************************************************************************
-load_data <- function(ret = "future_forecast"){
-    
-    # Artifacts
-    artifacts_list <- read_rds("../app_artifacts/artifacts_list_version2.rds")
-    
-    # Data
-    if(ret == "future_forecast") data_raw <- artifacts_list$data$future_forecast_tbl 
-    if(ret == "test_forecast")   data_raw <- artifacts_list$data$test_data_forecast_tbl
+# artifacts_list <- read_rds("../app_artifacts/artifacts_list_version2.rds")
+# 
+# future_forecast_data <- artifacts_list$data$future_forecast_tbl
+# test_forecast_data <- artifacts_list$data$test_data_forecast_tbl
+# 
+# country_code_tbl <- artifacts_list$data$country_code_tbl
+# store_code_tbl   <- artifacts_list$data$store_code_tbl
+# product_code_tbl <- artifacts_list$data$product_code_tbl
 
-    data_raw <- data_raw %>% 
-        mutate(across(.cols = c(.value, total_sold), .fns = exp))
-    
-    # Codes
-    country_code_tbl <- artifacts_list$data$country_code_tbl
-    store_code_tbl   <- artifacts_list$data$store_code_tbl
-    product_code_tbl <- artifacts_list$data$product_code_tbl
-    
-    # Final Output
-    output <- data_raw %>% 
+load_data <- function(.data){
+
+    .data %>% 
         mutate(country_code = substr(id, 1, 3)) %>% 
         mutate(store_code = substr(id, 4, 6)) %>% 
         mutate(product_code = substr(id, 7, 9)) %>% 
@@ -43,19 +36,11 @@ load_data <- function(ret = "future_forecast"){
         left_join(store_code_tbl) %>% 
         left_join(product_code_tbl) %>% 
         dplyr::select(-ends_with("_code"), -ends_with("K1"), -contains("lag90"))
-    
-    return(output)
-    
 
 }
 
-# sample_future_forecast_tbl <- load_data(ret = "future_forecast")
-# 
-# sample_test_forecast_tbl <- load_data(ret = "test_forecast")
-# 
-# sample_future_forecast_tbl %>% glimpse()
-# 
-# sample_future_forecast_tbl %>% View()
+# future_forecast_data %>% load_data()
+# test_forecast_data %>% load_data()
 
 
 # ******************************************************************************
