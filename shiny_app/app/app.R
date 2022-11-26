@@ -4,9 +4,9 @@
 # Libraries ----
 
 # * Core ----
-# library(tidyverse)
-# library(janitor)
-# library(timetk)
+library(tidyverse)
+library(janitor)
+library(timetk)
 
 # * Shiny ----
 library(shiny)
