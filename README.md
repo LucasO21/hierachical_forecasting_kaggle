@@ -17,3 +17,4 @@ Additionally, a typical hierarchical forecast in this case will have a separate 
 This area was the main focus of the project. A simple shiny was was created that lets a user explore forecasts by product, store, country etc. The user is also able to see how the model performed on test data, as well as download the 90 day future forecast to a csv file. You can interact with the app [here](). 
 
 
+![Screen Shot 2022-11-26 at 8 42 14 AM](https://user-images.githubusercontent.com/62886078/204091923-6dbe31b5-0eab-4996-abf0-34518622da10.png)
