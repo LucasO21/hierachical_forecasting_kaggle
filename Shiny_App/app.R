@@ -34,14 +34,13 @@ products_list <- c("Kaggle Advanced Techniques", "Kaggle Getting Started",
                    "Kaggle Recipe Book", "Kaggle for Kids: One Smart Goose")
 
 # Data ----
-artifacts_list <- read_rds("app_artifacts/artifacts_list_version2.rds")
+future_forecast_tbl <- read_rds("../shiny_app/app_artifacts/future_forecast_tbl.rds") %>% 
+    mutate(.value = exp(.value)) %>% 
+    mutate(total_sold = exp(total_sold))
 
-country_code_tbl    <- artifacts_list$data$country
-store_code_tbl      <- artifacts_list$data$store_code_tbl
-product_code_tbl    <- artifacts_list$data$product_code_tbl
-
-future_forecast_tbl <- artifacts_list$data$future_forecast_tbl %>% load_data()
-test_forecast_tbl   <- artifacts_list$data$test_data_forecast_tbl %>% load_data()
+test_forecast_tbl <- read_rds("../shiny_app/app_artifacts/test_forecast_tbl.rds") %>% 
+    mutate(.value = exp(.value)) %>% 
+    mutate(total_sold = exp(total_sold))
 
 
 # ******************************************************************************
