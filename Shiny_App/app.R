@@ -36,14 +36,12 @@ products_list <- c("Kaggle Advanced Techniques", "Kaggle Getting Started",
 # Data ----
 artifacts_list <- read_rds("app_artifacts/artifacts_list_version2.rds")
 
-country_code_tbl    <- artifacts_list$data$country_code_tbl
+country_code_tbl    <- artifacts_list$data$country
 store_code_tbl      <- artifacts_list$data$store_code_tbl
 product_code_tbl    <- artifacts_list$data$product_code_tbl
 
 future_forecast_tbl <- artifacts_list$data$future_forecast_tbl %>% load_data()
 test_forecast_tbl   <- artifacts_list$data$test_data_forecast_tbl %>% load_data()
-
-
 
 
 # ******************************************************************************
