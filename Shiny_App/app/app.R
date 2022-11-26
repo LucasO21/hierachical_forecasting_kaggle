@@ -7,17 +7,20 @@
 # library(tidyverse)
 # library(janitor)
 # library(timetk)
-#
-# # * Shiny ----
+
+# * Shiny ----
 library(shiny)
 library(shinyWidgets)
 library(shinydashboard)
 library(shinyBS)
 library(shinyjs)
-#
-# # Visualization ----
+
+# * Visualization ----
 library(plotly)
 library(DT)
+
+# * Modeling ----
+library(xgboost)
 
 # * Source ----
 source("app_functions/forecast_functions.R")
