@@ -345,4 +345,4 @@ artifacts_list_version2 <- list(
     )
 )
 
-artifacts_list_version2 %>% write_rds("../Artifacts//artifacts_list_version2.rds")
+artifacts_list_version2 %>% write_rds("../artifacts//artifacts_list_version2.rds")

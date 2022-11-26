@@ -497,7 +497,7 @@ artifacts_list <- list(
     )
 )
 
-artifacts_list %>% write_rds("../Artifacts//artifacts_list.rds")
+artifacts_list %>% write_rds("../artifacts//artifacts_list.rds")
 
 
 

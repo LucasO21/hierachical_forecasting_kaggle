@@ -2,9 +2,10 @@
 .Rhistory
 .RData
 .Ruserdata
-/Data
-/Archive
-/Artifacts
-/Shiny_App/Artifacts
-/Shiny_App/reprex
-/Shiny_App/Data
+/data
+/archive
+/artifacts
+/shiny_app/app_artifacts/artifacts_list.rds
+/shiny_app/app_artifacts/country_code_tbl.rds
+/shiny_app/app_artifacts/product_code_tbl.rds
+

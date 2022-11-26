@@ -20,7 +20,7 @@ library(plotly)
 library(DT)
 
 # * Source ----
-source("../Functions/forecast_functions.R")
+source("../app_functions/forecast_functions.R")
 
 # Static Params ----
 country_list <- c("Belgium", "France", "Germany", "Italy", "Poland", "Spain")
@@ -40,6 +40,9 @@ ui <-
     
     # * Sidebar Panel ----
     dashboardSidebar(
+        
+        br(),
+        br(),
 
         # ** Country Picker ----
         pickerInput(
@@ -111,6 +114,9 @@ ui <-
     
     # Dashboard Body ----
     dashboardBody(
+        tags$head(
+            tags$link(rel = "stylesheet", type = "text/css", href = "custom-css.css")
+        ),
         useShinyjs(),
         
         # * Column 1 ----
